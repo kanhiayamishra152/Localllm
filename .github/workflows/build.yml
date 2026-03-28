@@ -21,67 +21,27 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
+          cache: 'gradle'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK Components
-        run: |
-          yes | sdkmanager --install \
-            "platforms;android-34" \
-            "build-tools;34.0.0" \
-            "platform-tools" || true
-
-      - name: Create local.properties
-        run: |
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
-          echo "Created local.properties with sdk.dir=$ANDROID_HOME"
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.5'
-
-      - name: Debug - List files
-        run: |
-          echo "=== Root files ==="
-          ls -la
-          echo ""
-          echo "=== settings.gradle.kts ==="
-          cat settings.gradle.kts
-          echo ""
-          echo "=== build.gradle.kts ==="
-          cat build.gradle.kts
-          echo ""
-          echo "=== app/build.gradle.kts ==="
-          cat app/build.gradle.kts
-          echo ""
-          echo "=== ANDROID_HOME ==="
-          echo $ANDROID_HOME
-          echo ""
-          echo "=== local.properties ==="
-          cat local.properties
+      # Gradle Wrapper को चलाने की परमिशन देना (ज़रूरी स्टेप)
+      - name: Make gradlew executable
+        run: chmod +x gradlew
 
       - name: Build Debug APK
-        run: |
-          gradle assembleDebug --no-daemon --stacktrace 2>&1 | head -200
-        env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+        run: ./gradlew assembleDebug --stacktrace
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: LocalLLM-debug
+          name: LocalLLM-debug-apk
+          # यह पाथ सुनिश्चित करें कि आपकी फाइल संरचना के अनुसार सही है
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 30
 
-      - name: Upload build logs on failure
+      - name: Upload Logs on Failure
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: build-failure-logs
-          path: |
-            app/build/reports/
-            app/build/outputs/logs/
-          retention-days: 7
+          name: build-logs
+          path: app/build/reports/
