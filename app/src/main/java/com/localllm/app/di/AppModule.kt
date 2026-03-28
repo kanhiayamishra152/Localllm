@@ -25,67 +25,50 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(): OkHttpClient {
-        return OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(120, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .followRedirects(true)
-            .followSslRedirects(true)
+    fun provideOkHttpClient(): OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .followSslRedirects(true)
+        .build()
+
+    @Provides
+    @Singleton
+    fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
+        Room.databaseBuilder(context, AppDatabase::class.java, "localllm_db")
+            .fallbackToDestructiveMigration()
             .build()
-    }
 
     @Provides
     @Singleton
-    fun provideDatabase(@ApplicationContext context: Context): AppDatabase {
-        return Room.databaseBuilder(
-            context,
-            AppDatabase::class.java,
-            "localllm_database"
-        ).fallbackToDestructiveMigration().build()
-    }
+    fun provideChatDao(db: AppDatabase): ChatDao = db.chatDao()
 
     @Provides
     @Singleton
-    fun provideChatDao(database: AppDatabase): ChatDao = database.chatDao()
+    fun provideHuggingFaceApi(client: OkHttpClient): HuggingFaceApi = HuggingFaceApi(client)
 
     @Provides
     @Singleton
-    fun provideHuggingFaceApi(client: OkHttpClient): HuggingFaceApi {
-        return HuggingFaceApi(client)
-    }
-
-    @Provides
-    @Singleton
-    fun provideDuckDuckGoSearch(client: OkHttpClient): DuckDuckGoSearch {
-        return DuckDuckGoSearch(client)
-    }
+    fun provideDuckDuckGoSearch(client: OkHttpClient): DuckDuckGoSearch = DuckDuckGoSearch(client)
 
     @Provides
     @Singleton
     fun provideModelRepository(
         @ApplicationContext context: Context,
-        huggingFaceApi: HuggingFaceApi,
+        api: HuggingFaceApi,
         client: OkHttpClient
-    ): ModelRepository {
-        return ModelRepository(context, huggingFaceApi, client)
-    }
+    ): ModelRepository = ModelRepository(context, api, client)
 
     @Provides
     @Singleton
-    fun provideChatRepository(chatDao: ChatDao): ChatRepository {
-        return ChatRepository(chatDao)
-    }
+    fun provideChatRepository(dao: ChatDao): ChatRepository = ChatRepository(dao)
 
     @Provides
     @Singleton
-    fun provideHardwareProfiler(@ApplicationContext context: Context): HardwareProfiler {
-        return HardwareProfiler(context)
-    }
+    fun provideHardwareProfiler(@ApplicationContext context: Context): HardwareProfiler = HardwareProfiler(context)
 
     @Provides
     @Singleton
-    fun provideInferenceEngine(): InferenceEngine {
-        return InferenceEngine()
-    }
+    fun provideInferenceEngine(): InferenceEngine = InferenceEngine()
 }
