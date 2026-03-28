@@ -1,10 +1,8 @@
 package com.localllm.app.ui.screens.chat
 
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.localllm.app.data.db.ConversationEntity
-import com.localllm.app.data.db.MessageEntity
 import com.localllm.app.data.remote.DuckDuckGoSearch
 import com.localllm.app.data.repository.ChatRepository
 import com.localllm.app.data.repository.ModelRepository
@@ -13,7 +11,10 @@ import com.localllm.app.domain.HardwareProfiler
 import com.localllm.app.domain.InferenceEngine
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
 import javax.inject.Inject
@@ -48,74 +49,44 @@ class ChatViewModel @Inject constructor(
     private val modelRepository: ModelRepository,
     private val inferenceEngine: InferenceEngine,
     private val hardwareProfiler: HardwareProfiler,
-    private val webSearch: DuckDuckGoSearch,
-    savedStateHandle: SavedStateHandle
+    private val webSearch: DuckDuckGoSearch
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
-
     private var generationJob: Job? = null
-    private val initialConversationId: String? = savedStateHandle["conversationId"]
 
     init {
-        loadConversations()
-        loadDownloadedModels()
-        if (initialConversationId != null) {
-            selectConversation(initialConversationId)
-        }
-    }
-
-    private fun loadConversations() {
         viewModelScope.launch {
             chatRepository.getAllConversations().collect { convos ->
                 _uiState.update { it.copy(conversations = convos) }
             }
         }
+        loadDownloadedModels()
     }
 
     fun loadDownloadedModels() {
         _uiState.update { it.copy(downloadedModels = modelRepository.getDownloadedModels()) }
     }
 
-    fun loadModel(modelFile: File) {
+    fun loadModel(file: File) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoadingModel = true, errorMessage = null) }
-
-            val profile = hardwareProfiler.analyzeModelCompatibility(
-                modelFile.length() / (1024 * 1024)
-            )
-
+            val profile = hardwareProfiler.analyzeModelCompatibility(file.length() / (1024 * 1024))
             val config = GenerationConfig(
-                contextSize = profile.contextWindow,
-                temperature = profile.temperature,
-                topK = profile.topK,
-                topP = profile.topP,
-                repeatPenalty = profile.repeatPenalty,
-                maxTokens = profile.maxTokens,
-                threads = profile.threads
+                contextSize = profile.contextWindow, temperature = profile.temperature,
+                topK = profile.topK, topP = profile.topP, repeatPenalty = profile.repeatPenalty,
+                maxTokens = profile.maxTokens, threads = profile.threads
             )
-
-            val result = inferenceEngine.loadModel(modelFile.absolutePath, config)
-
-            result.fold(
+            inferenceEngine.loadModel(file.absolutePath, config).fold(
                 onSuccess = {
                     _uiState.update {
-                        it.copy(
-                            isModelLoaded = true,
-                            isLoadingModel = false,
-                            loadedModelName = modelFile.nameWithoutExtension,
-                            generationConfig = config
-                        )
+                        it.copy(isModelLoaded = true, isLoadingModel = false,
+                            loadedModelName = file.nameWithoutExtension, generationConfig = config)
                     }
                 },
-                onFailure = { error ->
-                    _uiState.update {
-                        it.copy(
-                            isLoadingModel = false,
-                            errorMessage = "Failed to load model: ${error.message}"
-                        )
-                    }
+                onFailure = { e ->
+                    _uiState.update { it.copy(isLoadingModel = false, errorMessage = "Load failed: ${e.message}") }
                 }
             )
         }
@@ -128,31 +99,23 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    fun selectConversation(conversationId: String) {
+    fun selectConversation(id: String) {
         viewModelScope.launch {
-            _uiState.update { it.copy(currentConversationId = conversationId) }
-            chatRepository.getMessages(conversationId).collect { msgs ->
-                _uiState.update {
-                    it.copy(
-                        messages = msgs.map { m ->
-                            ChatMessage(
-                                id = m.id,
-                                role = m.role,
-                                content = m.content,
-                                thinkingContent = m.thinkingContent,
-                                isWebSearchResult = m.isWebSearchResult
-                            )
-                        }
-                    )
+            _uiState.update { it.copy(currentConversationId = id) }
+            chatRepository.getMessages(id).collect { msgs ->
+                _uiState.update { s ->
+                    s.copy(messages = msgs.map { m ->
+                        ChatMessage(m.id, m.role, m.content, m.thinkingContent, isWebSearchResult = m.isWebSearchResult)
+                    })
                 }
             }
         }
     }
 
-    fun deleteConversation(conversationId: String) {
+    fun deleteConversation(id: String) {
         viewModelScope.launch {
-            chatRepository.deleteConversation(conversationId)
-            if (_uiState.value.currentConversationId == conversationId) {
+            chatRepository.deleteConversation(id)
+            if (_uiState.value.currentConversationId == id) {
                 _uiState.update { it.copy(currentConversationId = null, messages = emptyList()) }
             }
         }
@@ -164,156 +127,68 @@ class ChatViewModel @Inject constructor(
             _uiState.update { it.copy(errorMessage = "Please load a model first") }
             return
         }
-
         viewModelScope.launch {
-            // Ensure conversation exists
-            val conversationId = _uiState.value.currentConversationId ?: run {
-                val id = chatRepository.createConversation(
-                    title = content.take(50)
-                )
+            val convId = _uiState.value.currentConversationId ?: chatRepository.createConversation(content.take(50)).also { id ->
                 _uiState.update { it.copy(currentConversationId = id) }
-                id
             }
-
-            // Add user message
-            chatRepository.addMessage(conversationId, "user", content)
-
-            val userMsg = ChatMessage(
-                id = System.currentTimeMillis().toString(),
-                role = "user",
-                content = content
-            )
+            chatRepository.addMessage(convId, "user", content)
+            val userMsg = ChatMessage(System.currentTimeMillis().toString(), "user", content)
             _uiState.update { it.copy(messages = it.messages + userMsg) }
 
-            // Web search if enabled
             var webContext: String? = null
             if (_uiState.value.webSearchEnabled) {
-                try {
-                    webContext = webSearch.searchAndSummarize(content)
-                } catch (e: Exception) {
-                    // Silent fail for web search
-                }
+                try { webContext = webSearch.searchAndSummarize(content) } catch (_: Exception) {}
             }
 
-            // Start generation
             _uiState.update { it.copy(isGenerating = true) }
+            val assistantId = "${System.currentTimeMillis()}_a"
+            _uiState.update { it.copy(messages = it.messages + ChatMessage(assistantId, "assistant", "", isGenerating = true)) }
 
-            val allMessages = _uiState.value.messages.map { it.role to it.content }
             val prompt = inferenceEngine.buildPrompt(
-                messages = allMessages,
-                webContext = webContext,
-                thinkingEnabled = _uiState.value.thinkingEnabled
+                _uiState.value.messages.map { it.role to it.content },
+                webContext = webContext, thinkingEnabled = _uiState.value.thinkingEnabled
             )
 
-            val assistantMsgId = System.currentTimeMillis().toString() + "_assistant"
-            val assistantMsg = ChatMessage(
-                id = assistantMsgId,
-                role = "assistant",
-                content = "",
-                isGenerating = true
-            )
-            _uiState.update { it.copy(messages = it.messages + assistantMsg) }
-
-            val responseBuilder = StringBuilder()
-            var thinkingContent: String? = null
-            var finalContent = ""
+            val sb = StringBuilder()
+            var thinking: String? = null
+            var final_ = ""
 
             generationJob = launch {
                 try {
-                    inferenceEngine.generateStream(prompt, _uiState.value.generationConfig)
-                        .collect { token ->
-                            responseBuilder.append(token)
-                            val fullText = responseBuilder.toString()
-
-                            // Parse thinking tags
-                            if (_uiState.value.thinkingEnabled && fullText.contains("<think>")) {
-                                val thinkEnd = fullText.indexOf("</think>")
-                                if (thinkEnd != -1) {
-                                    thinkingContent = fullText.substringAfter("<think>")
-                                        .substringBefore("</think>").trim()
-                                    finalContent = fullText.substringAfter("</think>").trim()
-                                } else {
-                                    thinkingContent = fullText.substringAfter("<think>").trim()
-                                    finalContent = ""
-                                }
+                    inferenceEngine.generateStream(prompt, _uiState.value.generationConfig).collect { token ->
+                        sb.append(token)
+                        val full = sb.toString()
+                        if (_uiState.value.thinkingEnabled && full.contains("<think>")) {
+                            val end = full.indexOf("</think>")
+                            if (end != -1) {
+                                thinking = full.substringAfter("<think>").substringBefore("</think>").trim()
+                                final_ = full.substringAfter("</think>").trim()
                             } else {
-                                finalContent = fullText
+                                thinking = full.substringAfter("<think>").trim()
+                                final_ = ""
                             }
-
-                            _uiState.update { state ->
-                                state.copy(
-                                    messages = state.messages.map { msg ->
-                                        if (msg.id == assistantMsgId) {
-                                            msg.copy(
-                                                content = finalContent,
-                                                thinkingContent = thinkingContent,
-                                                isGenerating = true
-                                            )
-                                        } else msg
-                                    }
-                                )
-                            }
+                        } else {
+                            final_ = full
                         }
-                } catch (e: Exception) {
-                    if (responseBuilder.isEmpty()) {
-                        _uiState.update {
-                            it.copy(errorMessage = "Generation error: ${e.message}")
-                        }
+                        _uiState.update { s -> s.copy(messages = s.messages.map { m ->
+                            if (m.id == assistantId) m.copy(content = final_, thinkingContent = thinking, isGenerating = true) else m
+                        }) }
                     }
-                } finally {
-                    // Save final message
-                    chatRepository.addMessage(
-                        conversationId,
-                        "assistant",
-                        finalContent,
-                        thinkingContent,
-                        webContext != null
-                    )
-
-                    _uiState.update { state ->
-                        state.copy(
-                            isGenerating = false,
-                            messages = state.messages.map { msg ->
-                                if (msg.id == assistantMsgId) {
-                                    msg.copy(isGenerating = false)
-                                } else msg
-                            }
-                        )
-                    }
+                } catch (_: Exception) {}
+                finally {
+                    chatRepository.addMessage(convId, "assistant", final_, thinking, webContext != null)
+                    _uiState.update { s -> s.copy(isGenerating = false, messages = s.messages.map { m ->
+                        if (m.id == assistantId) m.copy(isGenerating = false) else m
+                    }) }
                 }
             }
         }
     }
 
-    fun stopGeneration() {
-        generationJob?.cancel()
-        inferenceEngine.stop()
-        _uiState.update { it.copy(isGenerating = false) }
-    }
-
-    fun toggleWebSearch() {
-        _uiState.update { it.copy(webSearchEnabled = !it.webSearchEnabled) }
-    }
-
-    fun toggleThinking() {
-        _uiState.update { it.copy(thinkingEnabled = !it.thinkingEnabled) }
-    }
-
-    fun updateConfig(config: GenerationConfig) {
-        _uiState.update { it.copy(generationConfig = config) }
-    }
-
-    fun clearError() {
-        _uiState.update { it.copy(errorMessage = null) }
-    }
-
-    fun unloadModel() {
-        inferenceEngine.unload()
-        _uiState.update { it.copy(isModelLoaded = false, loadedModelName = null) }
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        inferenceEngine.unload()
-    }
+    fun stopGeneration() { generationJob?.cancel(); inferenceEngine.stop(); _uiState.update { it.copy(isGenerating = false) } }
+    fun toggleWebSearch() { _uiState.update { it.copy(webSearchEnabled = !it.webSearchEnabled) } }
+    fun toggleThinking() { _uiState.update { it.copy(thinkingEnabled = !it.thinkingEnabled) } }
+    fun updateConfig(config: GenerationConfig) { _uiState.update { it.copy(generationConfig = config) } }
+    fun clearError() { _uiState.update { it.copy(errorMessage = null) } }
+    override fun onCleared() { super.onCleared(); inferenceEngine.unload() }
 }
