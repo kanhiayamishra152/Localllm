@@ -10,7 +10,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository
@@ -25,38 +25,63 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android NDK and CMake
+      - name: Install Android SDK Components
         run: |
-          yes | sdkmanager --install "ndk;26.1.10909125" "cmake;3.22.1" || true
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
+          yes | sdkmanager --install \
+            "platforms;android-34" \
+            "build-tools;34.0.0" \
+            "platform-tools" || true
 
-      - name: Clone llama.cpp
+      - name: Create local.properties
         run: |
-          git clone --depth 1 https://github.com/ggerganov/llama.cpp.git external/llama.cpp
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          echo "Created local.properties with sdk.dir=$ANDROID_HOME"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.5'
 
-      - name: List project structure
+      - name: Debug - List files
         run: |
-          echo "=== Root ==="
+          echo "=== Root files ==="
           ls -la
-          echo "=== App ==="
-          ls -la app/ || echo "No app dir"
-          echo "=== Llama ==="
-          ls -la llama/ || echo "No llama dir"
+          echo ""
+          echo "=== settings.gradle.kts ==="
+          cat settings.gradle.kts
+          echo ""
+          echo "=== build.gradle.kts ==="
+          cat build.gradle.kts
+          echo ""
+          echo "=== app/build.gradle.kts ==="
+          cat app/build.gradle.kts
+          echo ""
+          echo "=== ANDROID_HOME ==="
+          echo $ANDROID_HOME
+          echo ""
+          echo "=== local.properties ==="
+          cat local.properties
 
       - name: Build Debug APK
         run: |
-          gradle assembleDebug --no-daemon --stacktrace
+          gradle assembleDebug --no-daemon --stacktrace 2>&1 | head -200
         env:
-          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: LocalLLM-debug
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 30
+
+      - name: Upload build logs on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: build-failure-logs
+          path: |
+            app/build/reports/
+            app/build/outputs/logs/
+          retention-days: 7
