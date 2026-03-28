@@ -3,7 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
     id("com.google.dagger.hilt.android")
-    kotlin("plugin.serialization")
+    id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 android {
@@ -17,35 +17,21 @@ android {
         versionCode = 1
         versionName = "1.0.0"
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
         vectorDrawables {
             useSupportLibrary = true
         }
     }
 
-    signingConfigs {
-        create("release") {
-            // Use debug keystore for CI builds
-            storeFile = file("${System.getProperty("user.home")}/.android/debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
-        }
-    }
-
     buildTypes {
+        debug {
+            isMinifyEnabled = false
+        }
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("debug")
-        }
-        debug {
-            isMinifyEnabled = false
         }
     }
 
@@ -115,23 +101,11 @@ dependencies {
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
-    // Coil (image loading)
-    implementation("io.coil-kt:coil-compose:2.5.0")
-
     // DataStore
     implementation("androidx.datastore:datastore-preferences:1.0.0")
 
-    // Work Manager for background downloads
-    implementation("androidx.work:work-runtime-ktx:2.9.0")
-
     // Jsoup for web scraping
     implementation("org.jsoup:jsoup:1.17.2")
-
-    // Markdown rendering
-    implementation("io.noties.markwon:core:4.6.2")
-
-    // Llama module
-    implementation(project(":llama"))
 
     // Debug
     debugImplementation("androidx.compose.ui:ui-tooling")
