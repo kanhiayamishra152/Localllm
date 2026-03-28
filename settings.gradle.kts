@@ -6,7 +6,8 @@ pluginManagement {
     }
 }
 
-dependencyResolution {
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
         mavenCentral()
@@ -15,4 +16,3 @@ dependencyResolution {
 
 rootProject.name = "LocalLLM"
 include(":app")
-include(":llama")
