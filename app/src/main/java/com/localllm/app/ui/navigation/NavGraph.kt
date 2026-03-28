@@ -10,45 +10,22 @@ import com.localllm.app.ui.screens.chat.ChatScreen
 import com.localllm.app.ui.screens.models.ModelBrowserScreen
 import com.localllm.app.ui.screens.settings.SettingsScreen
 
-sealed class Screen(val route: String) {
-    data object Chat : Screen("chat?conversationId={conversationId}") {
-        fun createRoute(conversationId: String? = null) =
-            if (conversationId != null) "chat?conversationId=$conversationId"
-            else "chat"
-    }
-    data object Models : Screen("models")
-    data object Settings : Screen("settings")
-}
-
 @Composable
 fun NavGraph() {
     val navController = rememberNavController()
-
-    NavHost(
-        navController = navController,
-        startDestination = "chat"
-    ) {
+    NavHost(navController = navController, startDestination = "chat") {
         composable(
             route = "chat?conversationId={conversationId}",
-            arguments = listOf(
-                navArgument("conversationId") {
-                    type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
-                }
-            )
+            arguments = listOf(navArgument("conversationId") {
+                type = NavType.StringType; nullable = true; defaultValue = null
+            })
         ) {
-            ChatScreen(
-                navController = navController,
-                conversationId = it.arguments?.getString("conversationId")
-            )
+            ChatScreen(navController = navController)
         }
-
-        composable(Screen.Models.route) {
+        composable("models") {
             ModelBrowserScreen(navController = navController)
         }
-
-        composable(Screen.Settings.route) {
+        composable("settings") {
             SettingsScreen(navController = navController)
         }
     }
