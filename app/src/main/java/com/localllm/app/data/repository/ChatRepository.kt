@@ -1,32 +1,24 @@
 package com.localllm.app.data.repository
 
-import com.localllm.app.data.db.*
+import com.localllm.app.data.db.ChatDao
+import com.localllm.app.data.db.ConversationEntity
+import com.localllm.app.data.db.MessageEntity
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class ChatRepository @Inject constructor(
-    private val chatDao: ChatDao
-) {
-    fun getAllConversations(): Flow<List<ConversationEntity>> {
-        return chatDao.getAllConversations()
-    }
+class ChatRepository @Inject constructor(private val chatDao: ChatDao) {
 
-    fun getMessages(conversationId: String): Flow<List<MessageEntity>> {
-        return chatDao.getMessagesForConversation(conversationId)
-    }
+    fun getAllConversations(): Flow<List<ConversationEntity>> = chatDao.getAllConversations()
 
-    suspend fun createConversation(title: String = "New Chat", modelId: String? = null): String {
+    fun getMessages(conversationId: String): Flow<List<MessageEntity>> =
+        chatDao.getMessagesForConversation(conversationId)
+
+    suspend fun createConversation(title: String = "New Chat"): String {
         val id = UUID.randomUUID().toString()
-        chatDao.insertConversation(
-            ConversationEntity(
-                id = id,
-                title = title,
-                modelId = modelId
-            )
-        )
+        chatDao.insertConversation(ConversationEntity(id = id, title = title))
         return id
     }
 
@@ -48,24 +40,8 @@ class ChatRepository @Inject constructor(
                 isWebSearchResult = isWebSearch
             )
         )
-        // Update conversation timestamp
-        chatDao.getAllConversations()
+        chatDao.updateConversationTitle(conversationId, content.take(50), System.currentTimeMillis())
         return id
-    }
-
-    suspend fun updateMessage(messageId: String, content: String, thinkingContent: String? = null) {
-        // We'll use insert with REPLACE
-        // For simplicity, update via a direct query would be better
-    }
-
-    suspend fun updateConversationTitle(conversationId: String, title: String) {
-        chatDao.insertConversation(
-            ConversationEntity(
-                id = conversationId,
-                title = title,
-                updatedAt = System.currentTimeMillis()
-            )
-        )
     }
 
     suspend fun deleteConversation(conversationId: String) {
