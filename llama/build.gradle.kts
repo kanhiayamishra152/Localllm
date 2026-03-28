@@ -11,7 +11,8 @@ android {
         minSdk = 26
         
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+            // सिर्फ arm64 रखा है ताकि GitHub Actions क्रैश ना हो और तुम्हारे फोन पर चल सके
+            abiFilters += listOf("arm64-v8a")
         }
 
         externalNativeBuild {
