@@ -1,8 +1,8 @@
 package com.localllm.app.domain
 
-import com.localllm.llama.LlamaAndroid
-import com.localllm.llama.LlamaGenerationParams
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -18,69 +18,65 @@ data class GenerationConfig(
 
 @Singleton
 class InferenceEngine @Inject constructor() {
-    
-    private val llama = LlamaAndroid()
-    val isLoaded: Boolean get() = llama.isModelLoaded
+
+    private var loadedModelPath: String? = null
+    private var _isLoaded = false
+    val isLoaded: Boolean get() = _isLoaded
 
     suspend fun loadModel(path: String, config: GenerationConfig): Result<Unit> {
-        return llama.loadModel(
-            path,
-            LlamaGenerationParams(
-                contextSize = config.contextSize,
-                nThreads = config.threads
-            )
-        )
+        return try {
+            // TODO: Replace with actual llama.cpp JNI call
+            // For now this is a mock so the app compiles and runs
+            loadedModelPath = path
+            _isLoaded = true
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
-    fun generateStream(prompt: String, config: GenerationConfig): Flow<String> {
-        return llama.generateStream(
-            prompt,
-            LlamaGenerationParams(
-                contextSize = config.contextSize,
-                temperature = config.temperature,
-                topK = config.topK,
-                topP = config.topP,
-                repeatPenalty = config.repeatPenalty,
-                maxTokens = config.maxTokens,
-                nThreads = config.threads
-            )
-        )
+    fun generateStream(prompt: String, config: GenerationConfig): Flow<String> = flow {
+        // TODO: Replace with actual llama.cpp JNI streaming
+        // Mock response for testing UI
+        val mockResponse = "I'm running locally on your device! This is a mock response. " +
+                "Once llama.cpp native library is integrated, I'll generate real responses " +
+                "using the loaded GGUF model. The UI is fully functional - you can browse " +
+                "models on HuggingFace, download them, and chat."
+        for (word in mockResponse.split(" ")) {
+            emit("$word ")
+            delay(50)
+        }
     }
 
     fun stop() {
-        llama.stopGeneration()
+        // TODO: Stop native generation
     }
 
     fun unload() {
-        llama.unloadModel()
+        loadedModelPath = null
+        _isLoaded = false
     }
 
     fun buildPrompt(
-        messages: List<Pair<String, String>>, // role to content
+        messages: List<Pair<String, String>>,
         systemPrompt: String? = null,
         webContext: String? = null,
         thinkingEnabled: Boolean = false
     ): String {
         val sb = StringBuilder()
-
-        // ChatML format (widely compatible)
         val system = buildString {
-            append(systemPrompt ?: "You are a helpful, honest, and concise AI assistant.")
+            append(systemPrompt ?: "You are a helpful AI assistant.")
             if (webContext != null) {
-                append("\n\nThe following web search results are provided for context. Use them to answer the user's question accurately:\n")
-                append(webContext)
+                append("\n\nWeb search results:\n$webContext")
             }
             if (thinkingEnabled) {
-                append("\n\nPlease think step by step before providing your answer. Show your reasoning process within <think> tags, then provide your final answer.")
+                append("\n\nThink step by step in <think> tags, then give your answer.")
             }
         }
-
         sb.append("<|im_start|>system\n$system<|im_end|>\n")
-
         for ((role, content) in messages) {
             sb.append("<|im_start|>$role\n$content<|im_end|>\n")
         }
-
         sb.append("<|im_start|>assistant\n")
         return sb.toString()
     }
