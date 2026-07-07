@@ -4,12 +4,10 @@ import android.content.Context
 import androidx.room.Room
 import com.localllm.app.data.db.AppDatabase
 import com.localllm.app.data.db.ChatDao
+import com.localllm.app.data.db.TaskDao
 import com.localllm.app.data.remote.DuckDuckGoSearch
 import com.localllm.app.data.remote.HuggingFaceApi
-import com.localllm.app.data.repository.ChatRepository
-import com.localllm.app.data.repository.ModelRepository
 import com.localllm.app.domain.HardwareProfiler
-import com.localllm.app.domain.InferenceEngine
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -36,13 +34,17 @@ object AppModule {
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
-        Room.databaseBuilder(context, AppDatabase::class.java, "localllm_db")
+        Room.databaseBuilder(context, AppDatabase::class.java, "neuraltask_db")
             .fallbackToDestructiveMigration()
             .build()
 
     @Provides
     @Singleton
     fun provideChatDao(db: AppDatabase): ChatDao = db.chatDao()
+
+    @Provides
+    @Singleton
+    fun provideTaskDao(db: AppDatabase): TaskDao = db.taskDao()
 
     @Provides
     @Singleton
@@ -54,21 +56,5 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideModelRepository(
-        @ApplicationContext context: Context,
-        api: HuggingFaceApi,
-        client: OkHttpClient
-    ): ModelRepository = ModelRepository(context, api, client)
-
-    @Provides
-    @Singleton
-    fun provideChatRepository(dao: ChatDao): ChatRepository = ChatRepository(dao)
-
-    @Provides
-    @Singleton
     fun provideHardwareProfiler(@ApplicationContext context: Context): HardwareProfiler = HardwareProfiler(context)
-
-    @Provides
-    @Singleton
-    fun provideInferenceEngine(): InferenceEngine = InferenceEngine()
 }

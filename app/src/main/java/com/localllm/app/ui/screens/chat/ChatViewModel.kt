@@ -3,12 +3,15 @@ package com.localllm.app.ui.screens.chat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.localllm.app.data.db.ConversationEntity
+import com.localllm.app.data.preferences.UserPreferencesRepository
 import com.localllm.app.data.remote.DuckDuckGoSearch
 import com.localllm.app.data.repository.ChatRepository
 import com.localllm.app.data.repository.ModelRepository
+import com.localllm.app.data.repository.TaskRepository
 import com.localllm.app.domain.GenerationConfig
 import com.localllm.app.domain.HardwareProfiler
 import com.localllm.app.domain.InferenceEngine
+import com.localllm.app.domain.TaskExtractor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,7 +43,9 @@ data class ChatUiState(
     val errorMessage: String? = null,
     val isLoadingModel: Boolean = false,
     val generationConfig: GenerationConfig = GenerationConfig(),
-    val downloadedModels: List<File> = emptyList()
+    val downloadedModels: List<File> = emptyList(),
+    val themeMode: Int = 0,
+    val taskSnackbar: String? = null
 )
 
 @HiltViewModel
@@ -49,7 +54,10 @@ class ChatViewModel @Inject constructor(
     private val modelRepository: ModelRepository,
     private val inferenceEngine: InferenceEngine,
     private val hardwareProfiler: HardwareProfiler,
-    private val webSearch: DuckDuckGoSearch
+    private val webSearch: DuckDuckGoSearch,
+    private val taskRepository: TaskRepository,
+    private val taskExtractor: TaskExtractor,
+    private val userPreferences: UserPreferencesRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -61,6 +69,9 @@ class ChatViewModel @Inject constructor(
             chatRepository.getAllConversations().collect { convos ->
                 _uiState.update { it.copy(conversations = convos) }
             }
+        }
+        viewModelScope.launch {
+            userPreferences.themeMode.collect { mode -> _uiState.update { it.copy(themeMode = mode) } }
         }
         loadDownloadedModels()
     }
@@ -135,6 +146,9 @@ class ChatViewModel @Inject constructor(
             val userMsg = ChatMessage(System.currentTimeMillis().toString(), "user", content)
             _uiState.update { it.copy(messages = it.messages + userMsg) }
 
+            // AI-powered routine & task detection (heuristic, no LLM load required)
+            extractTasks(content)
+
             var webContext: String? = null
             if (_uiState.value.webSearchEnabled) {
                 try { webContext = webSearch.searchAndSummarize(content) } catch (_: Exception) {}
@@ -190,5 +204,32 @@ class ChatViewModel @Inject constructor(
     fun toggleThinking() { _uiState.update { it.copy(thinkingEnabled = !it.thinkingEnabled) } }
     fun updateConfig(config: GenerationConfig) { _uiState.update { it.copy(generationConfig = config) } }
     fun clearError() { _uiState.update { it.copy(errorMessage = null) } }
+
+    private fun extractTasks(content: String) {
+        val extracted = taskExtractor.extract(content)
+        if (extracted.isEmpty()) return
+        viewModelScope.launch {
+            extracted.forEach { t ->
+                taskRepository.addTask(
+                    title = t.title,
+                    dueDate = t.dueDate,
+                    isRoutine = t.isRoutine,
+                    recurrence = t.recurrence,
+                    priority = t.priority,
+                    source = "chat"
+                )
+            }
+            _uiState.update {
+                it.copy(taskSnackbar = "Added ${extracted.size} task${if (extracted.size > 1) "s" else ""} from your message")
+            }
+        }
+    }
+
+    fun setThemeMode(mode: Int) {
+        viewModelScope.launch { userPreferences.setThemeMode(mode) }
+    }
+
+    fun clearTaskSnackbar() { _uiState.update { it.copy(taskSnackbar = null) } }
+
     override fun onCleared() { super.onCleared(); inferenceEngine.unload() }
 }

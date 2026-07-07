@@ -9,13 +9,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
+enum class ThemeMode {
+    SYSTEM, LIGHT, DARK
+}
+
 private val DarkColorScheme = darkColorScheme(
-    primary = AccentGreen,
-    onPrimary = Color.White,
-    secondary = AccentGreenLight,
+    primary = MonochromePrimaryDark,
+    onPrimary = DarkBackground,
+    secondary = MonochromePrimaryDark,
     background = DarkBackground,
     surface = DarkSurface,
     surfaceVariant = DarkSurfaceVariant,
@@ -23,13 +26,14 @@ private val DarkColorScheme = darkColorScheme(
     onSurface = TextPrimaryDark,
     onSurfaceVariant = TextSecondaryDark,
     outline = DarkBorderColor,
-    error = ErrorColor
+    outlineVariant = DarkBorderColor,
+    error = ErrorColorDark
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = AccentGreen,
-    onPrimary = Color.White,
-    secondary = AccentGreenLight,
+    primary = MonochromePrimaryLight,
+    onPrimary = LightBackground,
+    secondary = MonochromePrimaryLight,
     background = LightBackground,
     surface = LightSurface,
     surfaceVariant = LightSurfaceVariant,
@@ -37,16 +41,22 @@ private val LightColorScheme = lightColorScheme(
     onSurface = TextPrimaryLight,
     onSurfaceVariant = TextSecondaryLight,
     outline = LightBorderColor,
+    outlineVariant = LightBorderColor,
     error = ErrorColor
 )
 
 @Composable
-fun LocalLLMTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+fun NeuralTaskTheme(
+    themeMode: ThemeMode = ThemeMode.SYSTEM,
     content: @Composable () -> Unit
 ) {
+    val darkTheme = when (themeMode) {
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
-    val view = LocalView.current
+    val view = androidx.compose.ui.platform.LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window

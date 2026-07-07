@@ -2,21 +2,33 @@ package com.localllm.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val DarkBackground = Color(0xFF212121)
-val DarkSurface = Color(0xFF2F2F2F)
-val DarkSurfaceVariant = Color(0xFF424242)
-val DarkBorderColor = Color(0xFF565656)
-val AccentGreen = Color(0xFF10A37F)
-val AccentGreenLight = Color(0xFF1ED49F)
+// ---- Monochrome Black & White palette (no heavy colors) ----
+val DarkBackground = Color(0xFF0A0A0A)
+val DarkSurface = Color(0xFF141414)
+val DarkSurfaceVariant = Color(0xFF1F1F1F)
+val DarkBorderColor = Color(0xFF2A2A2A)
+
 val LightBackground = Color(0xFFFFFFFF)
-val LightSurface = Color(0xFFF7F7F8)
-val LightSurfaceVariant = Color(0xFFEFEFEF)
-val LightBorderColor = Color(0xFFE5E5E5)
-val TextPrimaryDark = Color(0xFFECECEC)
-val TextSecondaryDark = Color(0xFFB4B4B4)
-val TextPrimaryLight = Color(0xFF1A1A1A)
-val TextSecondaryLight = Color(0xFF6E6E6E)
-val ThinkingBubbleColor = Color(0xFF1E3A5F)
-val ErrorColor = Color(0xFFEF4444)
-val WarningColor = Color(0xFFF59E0B)
-val SuccessColor = Color(0xFF10B981)
+val LightSurface = Color(0xFFFAFAFA)
+val LightSurfaceVariant = Color(0xFFF0F0F0)
+val LightBorderColor = Color(0xFFE2E2E2)
+
+val TextPrimaryDark = Color(0xFFEDEDED)
+val TextSecondaryDark = Color(0xFF9A9A9A)
+val TextPrimaryLight = Color(0xFF111111)
+val TextSecondaryLight = Color(0xFF6B6B6B)
+
+// Primary is pure monochrome: white on dark, near-black on light.
+val MonochromePrimaryDark = Color(0xFFFFFFFF)
+val MonochromePrimaryLight = Color(0xFF111111)
+
+// Reserved for destructive actions only.
+val ErrorColor = Color(0xFFB3261E)
+val ErrorColorDark = Color(0xFFCF6679)
+
+// Neutral status tones (kept monochrome per design language).
+val SuccessColor = Color(0xFF3A3A3A)
+val WarningColor = Color(0xFF6B6B6B)
+
+// Subtle neutral tone for AI "thinking" bubbles (no heavy color).
+val ThinkingBubbleColor = Color(0xFF2A2A2A)

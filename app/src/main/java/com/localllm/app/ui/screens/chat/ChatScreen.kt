@@ -2,7 +2,6 @@ package com.localllm.app.ui.screens.chat
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.RepeatMode
@@ -38,13 +37,11 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.localllm.app.data.db.ConversationEntity
-import com.localllm.app.ui.theme.AccentGreen
-import com.localllm.app.ui.theme.SuccessColor
+import com.localllm.app.ui.screens.tasks.DashboardSection
+import com.localllm.app.ui.theme.ErrorColor
 import com.localllm.app.ui.theme.ThinkingBubbleColor
 import kotlinx.coroutines.launch
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,6 +61,9 @@ fun ChatScreen(
     LaunchedEffect(uiState.errorMessage) {
         uiState.errorMessage?.let { snackbarHostState.showSnackbar(it); viewModel.clearError() }
     }
+    LaunchedEffect(uiState.taskSnackbar) {
+        uiState.taskSnackbar?.let { snackbarHostState.showSnackbar(it); viewModel.clearTaskSnackbar() }
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -74,6 +74,18 @@ fun ChatScreen(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), shape = RoundedCornerShape(12.dp)) {
                         Icon(Icons.Filled.Add, null); Spacer(Modifier.width(8.dp)); Text("New Chat")
                     }
+                    // Theme toggle (manual Dark / Light / System)
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                    ) {
+                        Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                            ThemeToggle(Icons.Outlined.PhoneAndroid, "System", uiState.themeMode == 0) { viewModel.setThemeMode(0) }
+                            ThemeToggle(Icons.Outlined.LightMode, "Light", uiState.themeMode == 1) { viewModel.setThemeMode(1) }
+                            ThemeToggle(Icons.Outlined.DarkMode, "Dark", uiState.themeMode == 2) { viewModel.setThemeMode(2) }
+                        }
+                    }
                     HorizontalDivider(Modifier.padding(vertical = 8.dp))
                     Text("Recent Chats", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
@@ -81,7 +93,7 @@ fun ChatScreen(
                         items(uiState.conversations, key = { it.id }) { conv ->
                             Surface(onClick = { viewModel.selectConversation(conv.id); scope.launch { drawerState.close() } },
                                 shape = RoundedCornerShape(8.dp),
-                                color = if (conv.id == uiState.currentConversationId) MaterialTheme.colorScheme.primaryContainer.copy(0.3f)
+                                color = if (conv.id == uiState.currentConversationId) MaterialTheme.colorScheme.primary.copy(0.12f)
                                 else MaterialTheme.colorScheme.surface) {
                                 Row(Modifier.fillMaxWidth().padding(12.dp, 10.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Outlined.ChatBubbleOutline, null, Modifier.size(18.dp), MaterialTheme.colorScheme.onSurfaceVariant)
@@ -110,13 +122,13 @@ fun ChatScreen(
                     title = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column {
-                                Text("LocalLLM", style = MaterialTheme.typography.titleLarge)
+                                Text("NeuralTask", style = MaterialTheme.typography.titleLarge)
                                 uiState.loadedModelName?.let {
                                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
                             }
-                            if (uiState.isModelLoaded) { Spacer(Modifier.width(8.dp)); Badge(containerColor = SuccessColor) { Text("●") } }
+                            if (uiState.isModelLoaded) { Spacer(Modifier.width(8.dp)); Badge(containerColor = MaterialTheme.colorScheme.primary) { Text("●") } }
                         }
                     },
                     navigationIcon = { IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Filled.Menu, "Menu") } },
@@ -126,7 +138,6 @@ fun ChatScreen(
             },
             bottomBar = {
                 Column {
-                    // Toggles
                     Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 16.dp, vertical = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(selected = uiState.webSearchEnabled, onClick = { viewModel.toggleWebSearch() },
@@ -136,25 +147,27 @@ fun ChatScreen(
                             label = { Text("Thinking", style = MaterialTheme.typography.bodySmall) },
                             leadingIcon = { Icon(Icons.Outlined.Psychology, null, Modifier.size(16.dp)) }, modifier = Modifier.height(32.dp))
                     }
-                    // Input
                     InputBar(uiState.isGenerating, uiState.isModelLoaded, onSend = { viewModel.sendMessage(it) }, onStop = { viewModel.stopGeneration() })
                 }
             }
         ) { paddingValues ->
-            Box(Modifier.fillMaxSize().padding(paddingValues).background(MaterialTheme.colorScheme.background)) {
-                if (uiState.messages.isEmpty() && !uiState.isLoadingModel) {
-                    EmptyState(uiState.isModelLoaded, uiState.downloadedModels,
-                        onLoadModel = { viewModel.loadModel(it) }, onBrowseModels = { navController.navigate("models") })
-                } else {
-                    LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 8.dp)) {
-                        items(uiState.messages, key = { it.id }) { msg -> MessageBubble(msg) }
-                        if (uiState.isLoadingModel) {
-                            item {
-                                Box(Modifier.fillMaxWidth().padding(32.dp), Alignment.Center) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                                        Spacer(Modifier.height(8.dp))
-                                        Text("Loading model...", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(Modifier.fillMaxSize().padding(paddingValues).background(MaterialTheme.colorScheme.background)) {
+                DashboardSection()
+                Box(Modifier.fillMaxSize().weight(1f)) {
+                    if (uiState.messages.isEmpty() && !uiState.isLoadingModel) {
+                        EmptyState(uiState.isModelLoaded, uiState.downloadedModels,
+                            onLoadModel = { viewModel.loadModel(it) }, onBrowseModels = { navController.navigate("models") })
+                    } else {
+                        LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 8.dp)) {
+                            items(uiState.messages, key = { it.id }) { msg -> MessageBubble(msg) }
+                            if (uiState.isLoadingModel) {
+                                item {
+                                    Box(Modifier.fillMaxWidth().padding(32.dp), Alignment.Center) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                                            Spacer(Modifier.height(8.dp))
+                                            Text("Loading model...", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
                                     }
                                 }
                             }
@@ -167,17 +180,26 @@ fun ChatScreen(
 }
 
 @Composable
+private fun ThemeToggle(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, selected: Boolean, onClick: () -> Unit) {
+    IconButton(onClick = onClick, modifier = Modifier.size(40.dp)
+        .clip(CircleShape)
+        .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)) {
+        Icon(icon, description, tint = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
 private fun MessageBubble(message: ChatMessage) {
     val isUser = message.role == "user"
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 4.dp)) {
-            Box(Modifier.size(28.dp).clip(CircleShape).background(if (isUser) MaterialTheme.colorScheme.surfaceVariant else AccentGreen),
+            Box(Modifier.size(28.dp).clip(CircleShape).background(if (isUser) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary),
                 contentAlignment = Alignment.Center) {
                 Icon(if (isUser) Icons.Filled.Person else Icons.Filled.AutoAwesome, null, Modifier.size(16.dp),
-                    if (isUser) MaterialTheme.colorScheme.onSurfaceVariant else Color.White)
+                    if (isUser) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimary)
             }
             Spacer(Modifier.width(8.dp))
-            Text(if (isUser) "You" else "Assistant", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+            Text(if (isUser) "You" else "NeuralTask", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
             if (message.isGenerating) {
                 Spacer(Modifier.width(8.dp))
                 val inf = rememberInfiniteTransition(label = "dots")
@@ -189,7 +211,6 @@ private fun MessageBubble(message: ChatMessage) {
                 }
             }
         }
-        // Thinking bubble
         if (!isUser && message.thinkingContent != null) {
             var expanded by remember { mutableStateOf(false) }
             Surface(Modifier.fillMaxWidth().padding(start = 36.dp), color = ThinkingBubbleColor.copy(0.15f), shape = RoundedCornerShape(12.dp)) {
@@ -227,15 +248,15 @@ private fun InputBar(isGenerating: Boolean, isModelLoaded: Boolean, onSend: (Str
                     textStyle = TextStyle(color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), maxLines = 6, enabled = isModelLoaded,
                     decorationBox = { inner ->
-                        Box { if (text.isEmpty()) Text(if (isModelLoaded) "Message LocalLLM..." else "Load a model to start...",
+                        Box { if (text.isEmpty()) Text(if (isModelLoaded) "Message NeuralTask..." else "Load a model to start...",
                             style = TextStyle(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.6f), fontSize = 16.sp)); inner() }
                     })
             }
             Spacer(Modifier.width(8.dp))
             AnimatedContent(isGenerating, label = "btn") { gen ->
                 if (gen) {
-                    IconButton(onClick = onStop, Modifier.size(44.dp).clip(CircleShape).background(MaterialTheme.colorScheme.error)) {
-                        Icon(Icons.Filled.Stop, "Stop", tint = MaterialTheme.colorScheme.onError)
+                    IconButton(onClick = onStop, Modifier.size(44.dp).clip(CircleShape).background(ErrorColor)) {
+                        Icon(Icons.Filled.Stop, "Stop", tint = Color.White)
                     }
                 } else {
                     IconButton(onClick = { if (text.isNotBlank()) { onSend(text.trim()); text = "" } },
@@ -256,7 +277,7 @@ private fun EmptyState(isModelLoaded: Boolean, downloadedModels: List<File>, onL
     Column(Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Icon(Icons.Outlined.AutoAwesome, null, Modifier.size(48.dp), MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(16.dp))
-        Text("LocalLLM", style = MaterialTheme.typography.headlineMedium)
+        Text("NeuralTask", style = MaterialTheme.typography.headlineMedium)
         Spacer(Modifier.height(8.dp))
         if (!isModelLoaded) {
             Text("Load a model to start chatting", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

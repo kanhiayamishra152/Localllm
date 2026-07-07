@@ -3,8 +3,10 @@ package com.localllm.app.ui.screens.settings
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -13,54 +15,97 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.localllm.app.domain.HardwareProfiler
-import dagger.hilt.android.lifecycle.HiltViewModel
-import androidx.lifecycle.ViewModel
-import com.localllm.app.domain.GenerationConfig
 import com.localllm.app.domain.HardwareProfile
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import javax.inject.Inject
-
-data class SettingsUiState(
-    val config: GenerationConfig = GenerationConfig(),
-    val hardwareProfile: HardwareProfile? = null
-)
-
-@HiltViewModel
-class SettingsViewModel @Inject constructor(
-    private val hardwareProfiler: HardwareProfiler
-) : ViewModel() {
-    private val _uiState = MutableStateFlow(SettingsUiState())
-    val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
-    init { _uiState.update { it.copy(hardwareProfile = hardwareProfiler.getProfile()) } }
-    fun updateContextWindow(v: Int) { _uiState.update { it.copy(config = it.config.copy(contextSize = v)) } }
-    fun updateTemperature(v: Float) { _uiState.update { it.copy(config = it.config.copy(temperature = v)) } }
-    fun updateTopK(v: Int) { _uiState.update { it.copy(config = it.config.copy(topK = v)) } }
-    fun updateTopP(v: Float) { _uiState.update { it.copy(config = it.config.copy(topP = v)) } }
-    fun updateRepeatPenalty(v: Float) { _uiState.update { it.copy(config = it.config.copy(repeatPenalty = v)) } }
-    fun updateMaxTokens(v: Int) { _uiState.update { it.copy(config = it.config.copy(maxTokens = v)) } }
-    fun updateThreads(v: Int) { _uiState.update { it.copy(config = it.config.copy(threads = v)) } }
-}
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(navController: NavController, viewModel: SettingsViewModel = hiltViewModel()) {
     val uiState by viewModel.uiState.collectAsState()
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Advanced Settings") },
+            TopAppBar(title = { Text("Settings") },
                 navigationIcon = { IconButton(onClick = { navController.popBackStack() }) { Icon(Icons.Filled.ArrowBack, "Back") } })
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { pv ->
         Column(Modifier.fillMaxSize().padding(pv).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            // Appearance / Theme
+            SectionTitle("Appearance")
+            Card {
+                Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                    Text("Theme", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(8.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ThemeChoice("System", Icons.Outlined.PhoneAndroid, uiState.themeMode == 0) { viewModel.setThemeMode(0) }
+                        ThemeChoice("Light", Icons.Outlined.LightMode, uiState.themeMode == 1) { viewModel.setThemeMode(1) }
+                        ThemeChoice("Dark", Icons.Outlined.DarkMode, uiState.themeMode == 2) { viewModel.setThemeMode(2) }
+                    }
+                }
+            }
+
+            // Cloud API keys
+            SectionTitle("Cloud LLM & API Keys")
+            Card {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ApiKeyField(
+                        label = "Google Gemini API Key",
+                        value = uiState.geminiApiKey,
+                        onValueChange = viewModel::updateGeminiKey,
+                        onSave = {
+                            viewModel.saveGeminiKey(uiState.geminiApiKey)
+                            scope.launch { snackbarHostState.showSnackbar("Gemini key saved") }
+                        }
+                    )
+                    ApiKeyField(
+                        label = "OpenAI / Compatible API Key",
+                        value = uiState.openAiApiKey,
+                        onValueChange = viewModel::updateOpenAiKey,
+                        onSave = {
+                            viewModel.saveOpenAiKey(uiState.openAiApiKey)
+                            scope.launch { snackbarHostState.showSnackbar("API key saved") }
+                        }
+                    )
+                    ApiKeyField(
+                        label = "OpenAI-Compatible Base URL",
+                        value = uiState.openAiBaseUrl,
+                        placeholder = "http://192.168.x.x:11434/v1",
+                        onValueChange = viewModel::updateOpenAiBaseUrl,
+                        onSave = {
+                            viewModel.saveOpenAiBaseUrl(uiState.openAiBaseUrl)
+                            scope.launch { snackbarHostState.showSnackbar("Base URL saved") }
+                        }
+                    )
+                    Text(
+                        "Cloud keys enable remote LLM execution and are required for background AI tasks (local models are restricted from background execution).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Third-party integrations
+            SectionTitle("Integrations")
+            Card {
+                Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                    IntegrationRow("GitHub", "Commits, PRs & issues", Icons.Outlined.Code, uiState.githubEnabled) { viewModel.setGithubEnabled(it) }
+                    HorizontalDivider()
+                    IntegrationRow("Gmail", "Summarize daily email", Icons.Outlined.Email, uiState.gmailEnabled) { viewModel.setGmailEnabled(it) }
+                    HorizontalDivider()
+                    IntegrationRow("Telegram", "Send messages to NeuralTask", Icons.Outlined.Send, uiState.telegramEnabled) { viewModel.setTelegramEnabled(it) }
+                    HorizontalDivider()
+                    IntegrationRow("WhatsApp", "Quick to-dos on the go", Icons.Outlined.Chat, uiState.whatsappEnabled) { viewModel.setWhatsappEnabled(it) }
+                }
+            }
+
+            // Hardware
             uiState.hardwareProfile?.let { p ->
-                Card(colors = CardDefaults.cardColors(MaterialTheme.colorScheme.primaryContainer.copy(0.3f))) {
+                SectionTitle("Device Hardware")
+                Card(colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceVariant)) {
                     Column(Modifier.padding(16.dp)) {
-                        Text("Device Hardware", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(8.dp))
                         listOf("Device" to p.deviceModel, "Total RAM" to "${p.totalRamMB} MB", "Available RAM" to "${p.availableRamMB} MB",
                             "CPU Cores" to "${p.cpuCores}", "Architecture" to p.cpuArchitecture, "64-bit" to if (p.is64Bit) "Yes" else "No"
                         ).forEach { (l, v) ->
@@ -72,7 +117,9 @@ fun SettingsScreen(navController: NavController, viewModel: SettingsViewModel = 
                     }
                 }
             }
-            Text("Generation Parameters", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+
+            // Generation parameters
+            SectionTitle("Generation Parameters")
             SettingsSlider("Context Window", uiState.config.contextSize.toFloat(), 256f..8192f, 15, "${uiState.config.contextSize}",
                 { viewModel.updateContextWindow(it.toInt()) }, "Max context length")
             SettingsSlider("Temperature", uiState.config.temperature, 0f..2f, 20, "%.2f".format(uiState.config.temperature),
@@ -93,13 +140,71 @@ fun SettingsScreen(navController: NavController, viewModel: SettingsViewModel = 
 }
 
 @Composable
+private fun SectionTitle(text: String) {
+    Text(text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+}
+
+@Composable
+private fun ThemeChoice(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, selected: Boolean, onClick: () -> Unit) {
+    val border = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+    Surface(
+        onClick = onClick,
+        shape = MaterialTheme.shapes.medium,
+        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface,
+        modifier = Modifier.weight(1f).border(1.dp, border, MaterialTheme.shapes.medium)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(icon, null, tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(4.dp))
+            Text(label, style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
+@Composable
+private fun ApiKeyField(
+    label: String,
+    value: String,
+    placeholder: String = "",
+    onValueChange: (String) -> Unit,
+    onSave: () -> Unit
+) {
+    Column(Modifier.fillMaxWidth()) {
+        Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(4.dp))
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = { Text(placeholder, style = MaterialTheme.typography.bodySmall) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(4.dp))
+        Button(onClick = onSave, modifier = Modifier.align(Alignment.End)) { Text("Save") }
+    }
+}
+
+@Composable
+private fun IntegrationRow(label: String, description: String, icon: androidx.compose.ui.graphics.vector.ImageVector, enabled: Boolean, onToggle: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+            Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = enabled, onCheckedChange = onToggle)
+    }
+}
+
+@Composable
 private fun SettingsSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, steps: Int,
     displayValue: String, onValueChange: (Float) -> Unit, description: String) {
     Card {
         Column(Modifier.padding(16.dp)) {
             Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                 Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-                Badge(containerColor = MaterialTheme.colorScheme.primaryContainer) { Text(displayValue) }
+                Badge(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)) { Text(displayValue, color = MaterialTheme.colorScheme.onSurface) }
             }
             Spacer(Modifier.height(4.dp))
             Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
